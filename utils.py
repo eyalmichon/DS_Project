@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-
+import datawig
 
 def create_train_test_from_data():
     def splitOnPersent(path):
@@ -75,3 +75,30 @@ def create_no_nan_data():
     # drop rows with more than 1 missing value
     df = df.dropna(thresh=len(df.columns), axis=0)
     print(df.shape)
+
+
+# check the percentage of correct predictions, df1 is the complete data, df2 is the data with missing values that was imputed
+def check_accuracy(df1, df2, percent, with_nan = True):
+    correct = 0
+    total = 0
+    for i in range(len(df1)):
+        for j in range(len(df1.columns)):
+            if not with_nan and df2.iloc[i, j] != df2.iloc[i, j]:
+                continue
+            elif df1.iloc[i, j] == df2.iloc[i, j]:
+                correct += 1
+            total += 1        
+
+    return  ((correct / total - (1 - percent)) / percent) * 100   # return the percentage of correct predictions
+
+
+def predict_nan_with_datawig():
+    for data_name in ['adultsIncome', 'housePrices', 'loans', 'pulsar']:
+        for percent in [0.1, 0.3, 0.5]:
+            print(f'******************\n\nImputing {data_name} with {percent} nan\n\n******************')
+            path = f'./data/{data_name}/{int(percent * 100)}percent/raw_{data_name}_{percent}nan.csv'
+            df_with_missing = pd.read_csv(path)
+            df_with_missing_imputed = datawig.SimpleImputer.complete(df_with_missing, precision_threshold=0, num_epochs=100)
+            df_with_missing_imputed.to_csv(path.replace('raw', 'imputed', 1), index=False)
+            
+# predict_nan_with_datawig()
