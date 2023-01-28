@@ -2,6 +2,7 @@ from efficient_apriori import apriori
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 # import datawig
 
 
@@ -84,7 +85,7 @@ def create_no_nan_data():
 def check_accuracy(df1, df2, percent, with_nan=True):
     correct = 0
     total = 0
-    for i in range(len(df1)):
+    for i in tqdm(range(len(df1)), desc='Checking accuracy'):
         for j in range(len(df1.columns)):
             if not with_nan and df2.iloc[i, j] != df2.iloc[i, j]:
                 continue
@@ -111,7 +112,11 @@ def predict_nan_with_ml():
 
 def predict_nan_with_ar():
     for data_name in ['adultsIncome', 'housePrices', 'loans', 'pulsar']:
+    # for data_name in ['pulsar']:
         for percent in [0.1, 0.3, 0.5]:
+        # for percent in [0.3, 0.5]:
+        # for percent in [0.5]:
+            df = pd.read_csv(f'./data/{data_name}/raw/raw_{data_name}_no_nan.csv')
             print(
                 f'******************\n\nImputing {data_name} with {percent} nan\n\n******************')
             path = f'./data/{data_name}/{int(percent * 100)}percent/raw_{data_name}_{percent}nan.csv'
@@ -125,7 +130,8 @@ def predict_nan_with_ar():
             dict_for_apriori = df_for_apriori.to_dict(orient='records')
             transactions = [list(item.items()) for item in dict_for_apriori]
             itemsets, rules = apriori(
-                transactions, min_support=0.3, min_confidence=0.6, output_transaction_ids=False)
+                transactions, min_support=0.2, min_confidence=0.55, output_transaction_ids=False)
+            print(f'Found {len(rules)} rules')
             sorted_rules = sorted(rules, key=lambda x: x.lift, reverse=True)
             df_missing_index_rows = df_with_missing.index[df_with_missing.isna().any(
                 axis=1)]
@@ -164,8 +170,64 @@ def predict_nan_with_ar():
                                 df_with_missing.iloc[index,
                                                      col_names_dict[keyval[0]]] = keyval[1]
 
-            df_with_missing.to_csv(
-                path.replace('raw', 'imputed_ar', 1), index=False)
+            df_with_missing.to_csv(path.replace('raw', 'imputed_ar', 1), index=False)
+            print(f'With NaN = {check_accuracy(df,df_with_missing,percent,True)}%')
+            print(f'Without NaN = {check_accuracy(df,df_with_missing,percent,False)}%')
 
 
-predict_nan_with_ar()
+# predict_nan_with_ar()
+# df = pd.read_csv('./data/adultsIncome/raw/raw_adultsIncome.csv')
+# df_with_imputed = pd.read_csv(
+#     './data/adultsIncome/10percent/imputed_ar_adultsIncome_0.1nan.csv')
+# print(check_accuracy(df, df_with_imputed, 0.1,True))
+# print(check_accuracy(df, df_with_imputed, 0.1,False))
+
+def print_graphs_all_imputed_data():
+
+    labels = ['Adults Income', 'House Prices', 'Loans', 'Pulsar']
+    location = np.arange(len(labels))  # the label locations
+    width = 0.20 
+
+    for percent in [0.1, 0.3, 0.5]:
+        
+        ML_accuracy_with_nan = []
+        ML_accuracy_no_nan = []
+        AR_accuracy_with_nan = []
+        AR_accuracy_no_nan = []
+
+        for data_name in ['adultsIncome', 'housePrices', 'loans', 'pulsar']:
+            
+            raw_path = f'./data/{data_name}/raw/raw_{data_name}_no_nan.csv'
+            ar_path = f'./data/{data_name}/{int(percent * 100)}percent/imputed_ar_{data_name}_{percent}nan.csv'
+            ml_path = f'./data/{data_name}/{int(percent * 100)}percent/imputed_ml_{data_name}_{percent}nan.csv'
+            df_raw = pd.read_csv(raw_path)
+            df_ar = pd.read_csv(ar_path)
+            df_ml = pd.read_csv(ml_path)
+
+            ML_accuracy_with_nan.append(round(check_accuracy(df_raw, df_ml ,percent, True), 1))
+            ML_accuracy_no_nan.append(round(check_accuracy(df_raw, df_ml ,percent, False), 1))
+            AR_accuracy_with_nan.append(round(check_accuracy(df_raw, df_ar ,percent, True), 1))
+            AR_accuracy_no_nan.append(round(check_accuracy(df_raw, df_ar ,percent, False), 1))
+
+        fig, ax = plt.subplots()
+        rects1 = ax.bar(location - 1.5 * width, ML_accuracy_with_nan, width, label='Machine Learning with NaN')
+        rects2 = ax.bar(location - width/2, AR_accuracy_with_nan, width, label='Association Rules with NaN')
+        rects3 = ax.bar(location + width/2, ML_accuracy_no_nan, width, label='Machine Learning without NaN')
+        rects4 = ax.bar(location + 1.5 * width, AR_accuracy_no_nan, width, label='Association Rules without NaN')    
+            
+        # Add some text for labels, title and custom x-axis tick labels, etc.
+        ax.set_ylabel('Accuracy')
+        ax.set_title('Accuracy of different methods')
+        ax.set_xticks(location, labels)
+        ax.legend()
+
+        ax.bar_label(rects1, padding=3)
+        ax.bar_label(rects2, padding=3)
+        ax.bar_label(rects3, padding=3)
+        ax.bar_label(rects4, padding=3)
+
+        fig.tight_layout()
+
+        plt.show()
+
+print_graphs_all_imputed_data()
