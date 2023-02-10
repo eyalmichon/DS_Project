@@ -6,66 +6,37 @@ import matplotlib.pyplot as plt
 import datawig
 
 
-def create_train_test_from_data():
-    def splitOnPersent(path):
-
-        df = pd.read_csv(path)
-
-        df_train = df.sample(frac=0.75, random_state=0)
-        df_test = df.drop(df_train.index)
-
-        df_train.to_csv(path.replace('raw', 'train', 1), index=False)
-        df_test.to_csv(path.replace('raw', 'test', 1), index=False)
-
-    for data_name in ['adultsIncome', 'loans', 'pulsar']:
-        for percent in [0.1, 0.3, 0.5]:
-            path = f'./data/{data_name}/{int(percent * 100)}percent/raw_{data_name}_{percent}nan.csv'
-            splitOnPersent(path)
-
-
-def create_nan_data():
-    # ['adultsIncome', 'loans', 'pulsar']
-    data_name = 'adultsIncome'
+def create_nan_data(data_name):
+    # dataname =['adultsIncome', 'loans', 'pulsar', 'stroke']
     path = f'./data/{data_name}/raw/raw_{data_name}_no_nan.csv'
-    # [0.1,0.3,0.5]:
-    percent = 0.5
-    df = pd.read_csv(path)
-    max_remove = int(len(df.columns) * 0.5)
+    for percent in [0.1,0.3,0.5]:
+        df = pd.read_csv(path)
+        # maximum number of nan values in a row
+        max_remove = int(len(df.columns) * 0.5)
 
-    print(f'Original shape: {df.shape}')
+        print(f'Original shape: {df.shape}')
 
-    counter = {}
+        def get_random():
+            while True:
+                random_row = np.random.randint(0, len(df))
+                random_col = np.random.randint(0, len(df.columns))
+                if df.iloc[random_row].isna().sum() < max_remove:
+                    return random_row, random_col
 
-    def get_random():
-        while True:
-            random_row = np.random.randint(0, len(df))
-            random_col = np.random.randint(0, len(df.columns))
-            if df.iloc[random_row].isna().sum() < max_remove:
-                return random_row, random_col
+        for i in range(int(df.size*percent)):
 
-            # count how many times we failed to find a row with less than max_remove nan values
-            if counter.get(random_row) is None:
-                counter[random_row] = 1
-            else:
-                counter[random_row] += 1
-                print(
-                    f'Tried {counter[random_row]} times to find a row with less than {max_remove} nan values')
+            print(f'Iteration {i+1} of {int(df.size*percent)}')
+            row, col = get_random()
+            df.iloc[row, col] = np.nan
 
-    for i in range(int(df.size*percent)):
+        print(f'New shape: {df.shape}')
 
-        print(f'Iteration {i+1} of {int(df.size*percent)}')
-        row, col = get_random()
-        df.iloc[row, col] = np.nan
-
-    print(f'New shape: {df.shape}')
-
-    df.to_csv(
-        path.replace('raw', str(int(percent*100))+'percent', 1).replace('no_nan.csv', '', 1) + str(percent) + 'nan.csv', index=False)
+        df.to_csv(
+            path.replace('raw', str(int(percent*100))+'percent', 1).replace('no_nan.csv', '', 1) + str(percent) + 'nan.csv', index=False)
 
 
-def create_no_nan_data():
-    # ['adultsIncome', 'loans', 'pulsar']
-    data_name = 'adultsIncome'
+def create_no_nan_data(data_name):
+    # dataname =['adultsIncome', 'loans', 'pulsar', 'stroke']
     path = f'./data/{data_name}/raw/raw_{data_name}.csv'
     df = pd.read_csv(path)
 
@@ -76,9 +47,11 @@ def create_no_nan_data():
     # drop columns with more than 50% missing values
     df = df.dropna(thresh=len(df)*0.5, axis=1)
 
-    # drop rows with more than 1 missing value
+    # # drop rows with more than 1 missing value
     df = df.dropna(thresh=len(df.columns), axis=0)
     print(df.shape)
+
+    df.to_csv(path.replace(f'raw_{data_name}',f'raw_{data_name}_no_nan'), index=False)
 
 
 # check the percentage of correct predictions, df1 is the complete data, df2 is the data with missing values that was imputed
@@ -98,7 +71,7 @@ def check_accuracy(df1, df2, percent, with_nan=True):
 
 
 def predict_nan_with_ml():
-    for data_name in ['adultsIncome', 'loans', 'pulsar']:
+    for data_name in ['adultsIncome', 'loans', 'pulsar', 'stroke']:
         for percent in [0.1, 0.3, 0.5]:
             print(
                 f'******************\n\nImputing {data_name} with {percent} nan\n\n******************')
@@ -111,10 +84,9 @@ def predict_nan_with_ml():
 
 
 def predict_nan_with_ar():
-    for data_name in ['adultsIncome', 'loans', 'pulsar']:
+    for data_name in ['adultsIncome', 'loans', 'pulsar', 'stroke']:
     # for data_name in ['pulsar']:
         for percent in [0.1, 0.3, 0.5]:
-        # for percent in [0.3, 0.5]:
         # for percent in [0.5]:
             df = pd.read_csv(f'./data/{data_name}/raw/raw_{data_name}_no_nan.csv')
             print(
@@ -176,7 +148,7 @@ def predict_nan_with_ar():
 
 def print_graphs_all_imputed_data():
 
-    labels = ['Adults Income', 'Loans', 'Pulsar']
+    labels = ['Adults Income', 'Loans', 'Pulsar', 'Stroke']
     location = np.arange(len(labels))  # the label locations
     width = 0.20 
 
@@ -187,7 +159,7 @@ def print_graphs_all_imputed_data():
         AR_accuracy_with_nan = []
         AR_accuracy_no_nan = []
 
-        for data_name in ['adultsIncome', 'loans', 'pulsar']:
+        for data_name in ['adultsIncome', 'loans', 'pulsar', 'stroke']:
             
             raw_path = f'./data/{data_name}/raw/raw_{data_name}_no_nan.csv'
             ar_path = f'./data/{data_name}/{int(percent * 100)}percent/imputed_ar_{data_name}_{percent}nan.csv'
@@ -221,6 +193,3 @@ def print_graphs_all_imputed_data():
         fig.tight_layout()
 
         plt.show()
-
-# print_graphs_all_imputed_data()
-predict_nan_with_ar()
