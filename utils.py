@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-# import datawig
+import datawig
 
 
 def create_train_test_from_data():
@@ -17,14 +17,14 @@ def create_train_test_from_data():
         df_train.to_csv(path.replace('raw', 'train', 1), index=False)
         df_test.to_csv(path.replace('raw', 'test', 1), index=False)
 
-    for data_name in ['adultsIncome', 'housePrices', 'loans', 'pulsar']:
+    for data_name in ['adultsIncome', 'loans', 'pulsar']:
         for percent in [0.1, 0.3, 0.5]:
             path = f'./data/{data_name}/{int(percent * 100)}percent/raw_{data_name}_{percent}nan.csv'
             splitOnPersent(path)
 
 
 def create_nan_data():
-    # ['adultsIncome', 'housePrices', 'loans', 'pulsar']
+    # ['adultsIncome', 'loans', 'pulsar']
     data_name = 'adultsIncome'
     path = f'./data/{data_name}/raw/raw_{data_name}_no_nan.csv'
     # [0.1,0.3,0.5]:
@@ -64,7 +64,7 @@ def create_nan_data():
 
 
 def create_no_nan_data():
-    # ['adultsIncome', 'housePrices', 'loans', 'pulsar']
+    # ['adultsIncome', 'loans', 'pulsar']
     data_name = 'adultsIncome'
     path = f'./data/{data_name}/raw/raw_{data_name}.csv'
     df = pd.read_csv(path)
@@ -98,7 +98,7 @@ def check_accuracy(df1, df2, percent, with_nan=True):
 
 
 def predict_nan_with_ml():
-    for data_name in ['adultsIncome', 'housePrices', 'loans', 'pulsar']:
+    for data_name in ['adultsIncome', 'loans', 'pulsar']:
         for percent in [0.1, 0.3, 0.5]:
             print(
                 f'******************\n\nImputing {data_name} with {percent} nan\n\n******************')
@@ -111,7 +111,7 @@ def predict_nan_with_ml():
 
 
 def predict_nan_with_ar():
-    for data_name in ['adultsIncome', 'housePrices', 'loans', 'pulsar']:
+    for data_name in ['adultsIncome', 'loans', 'pulsar']:
     # for data_name in ['pulsar']:
         for percent in [0.1, 0.3, 0.5]:
         # for percent in [0.3, 0.5]:
@@ -174,17 +174,9 @@ def predict_nan_with_ar():
             print(f'With NaN = {check_accuracy(df,df_with_missing,percent,True)}%')
             print(f'Without NaN = {check_accuracy(df,df_with_missing,percent,False)}%')
 
-
-# predict_nan_with_ar()
-# df = pd.read_csv('./data/adultsIncome/raw/raw_adultsIncome.csv')
-# df_with_imputed = pd.read_csv(
-#     './data/adultsIncome/10percent/imputed_ar_adultsIncome_0.1nan.csv')
-# print(check_accuracy(df, df_with_imputed, 0.1,True))
-# print(check_accuracy(df, df_with_imputed, 0.1,False))
-
 def print_graphs_all_imputed_data():
 
-    labels = ['Adults Income', 'House Prices', 'Loans', 'Pulsar']
+    labels = ['Adults Income', 'Loans', 'Pulsar']
     location = np.arange(len(labels))  # the label locations
     width = 0.20 
 
@@ -195,7 +187,7 @@ def print_graphs_all_imputed_data():
         AR_accuracy_with_nan = []
         AR_accuracy_no_nan = []
 
-        for data_name in ['adultsIncome', 'housePrices', 'loans', 'pulsar']:
+        for data_name in ['adultsIncome', 'loans', 'pulsar']:
             
             raw_path = f'./data/{data_name}/raw/raw_{data_name}_no_nan.csv'
             ar_path = f'./data/{data_name}/{int(percent * 100)}percent/imputed_ar_{data_name}_{percent}nan.csv'
@@ -230,4 +222,5 @@ def print_graphs_all_imputed_data():
 
         plt.show()
 
-print_graphs_all_imputed_data()
+# print_graphs_all_imputed_data()
+predict_nan_with_ar()
