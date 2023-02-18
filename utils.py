@@ -4,6 +4,7 @@ import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import datawig
+import shutil
 
 Data_Names = ['adultsIncome', 'loans', 'heart', 'stroke']
 Percentages = [0.1, 0.3, 0.5]
@@ -22,15 +23,6 @@ Params_for_module[f'stroke{0.1}'] = 0.3, 0.5
 Params_for_module[f'stroke{0.3}'] = 0.25, 0.45
 Params_for_module[f'stroke{0.5}'] = 0.2, 0.4
 
-def create_nan_data(data_name):
-    path = f'./data/{data_name}/raw/{data_name}_no_nan.csv'
-    for percent in Percentages:
-        df = pd.read_csv(path)
-        df_with_missing = df.mask(np.random.rand(*df.shape) > 1-percent)
-
-        df_with_missing.to_csv(
-            path.replace('raw', str(int(percent*100))+'percent', 1).replace('raw_','').replace('no_nan.csv', '', 1) + str(percent) + '_nan.csv', index=False)
-
 
 def create_no_nan_data(data_name):
     path = f'./data/{data_name}/raw/raw_{data_name}.csv'
@@ -46,6 +38,66 @@ def create_no_nan_data(data_name):
     df = df.dropna(thresh=len(df.columns), axis=0)
 
     df.to_csv(path.replace(f'raw_{data_name}',f'{data_name}_no_nan'), index=False)
+
+
+def create_sampled_data(data_name):
+    path = f'./data/{data_name}/raw/{data_name}_no_nan.csv'
+    df = pd.read_csv(path)
+    if len(df.index) > 1500:
+        df = df.sample(n=1500, random_state=1)
+    df.to_csv(path.replace('no_nan', 'sampled_no_nan'), index=False)
+
+
+def create_nan_data(data_name):
+    path = f'./data/{data_name}/raw/{data_name}_no_nan.csv'
+    path_sampled = f'./data/{data_name}/raw/{data_name}_sampled_no_nan.csv'
+    for percent in Percentages:
+        df = pd.read_csv(path)
+        df_sampled = pd.read_csv(path_sampled)
+        
+        df_with_missing = df.mask(np.random.rand(*df.shape) > 1-percent)
+        df_with_missing_sampled = df_sampled.mask(np.random.rand(*df_sampled.shape) > 1-percent)
+
+        # save nan data with missing values
+        df_with_missing.to_csv(
+            path.replace('raw', str(int(percent*100))+'percent', 1).replace('no_nan.csv', '', 1) + str(percent) + '_nan.csv', index=False)
+        # save sampled data
+        df_with_missing_sampled.to_csv(
+            path_sampled.replace('raw', str(int(percent*100))+'percent', 1).replace('_sampled_no_nan.csv', '_sampled_', 1) + str(percent) + '_nan.csv', index=False)
+
+def create_mapped_data(data_name):
+    path = f'./data/{data_name}/raw/{data_name}_no_nan.csv'
+    path_sampled = f'./data/{data_name}/raw/{data_name}_sampled_no_nan.csv'
+
+    df = pd.read_csv(path)
+    cols = create_map_from_data(df)
+    # replace in raw data
+    for col_name in cols:
+        df.replace({col_name: cols[col_name]},inplace=True)
+    df.to_csv(
+        path.replace('_no_nan.csv','_mapped_no_nan.csv'), index=False)
+    # replace in sampled raw data
+    for col_name in cols:
+        df.replace({col_name: cols[col_name]},inplace=True)
+    df.to_csv(
+        path_sampled.replace('_no_nan.csv','_mapped_no_nan.csv'), index=False)
+    
+    # replace in all percent data
+    for percent in Percentages:
+        path = f'./data/{data_name}/{int(percent * 100)}percent/{data_name}_{percent}_nan.csv'
+        path_sampled = f'./data/{data_name}/{int(percent * 100)}percent/{data_name}_sampled_{percent}_nan.csv'
+        df = pd.read_csv(path)
+        # replace in nan data
+        for col_name in cols:
+            df.replace({col_name: cols[col_name]},inplace=True)
+        df.to_csv(
+            path.replace(f'_{percent}_nan.csv',f'_mapped_{percent}_nan.csv'), index=False)
+        # replace in nan sampled data
+        df = pd.read_csv(path_sampled)
+        for col_name in cols:
+            df.replace({col_name: cols[col_name]},inplace=True)
+        df.to_csv(
+            path_sampled.replace(f'_{percent}_nan.csv',f'_mapped_{percent}_nan.csv'), index=False)
 
 
 # check the percentage of correct predictions, df1 is the complete data, df2 is the data with missing values that was imputed
@@ -66,23 +118,35 @@ def check_accuracy(df_no_nan, df_with_nan, df_predicted, with_nan=True):
 
     accuracy = 0 if total == 0 else correct/total
     # return the percentage of correct predictions
-    return {'correct': correct, 'total': total, 'accuracy': accuracy, 'accuracy_rounded': np.abs(accuracy * 100)}
+    return {'correct': correct, 'total': total, 'accuracy': np.round(np.abs(accuracy * 100), 5)}
 
 
-def predict_nan_with_ml(data_name):
+def predict_nan_with_ml(data_name, sampled = False):
+
+    df_original = pd.read_csv(f'./data/{data_name}/raw/{data_name}{"_sampled" if sampled else ""}_no_nan.csv')
     for percent in Percentages:
         print(f'******************\nImputing {data_name} with {percent} nan\n******************')
-        path = f'./data/{data_name}/{int(percent * 100)}percent/{data_name}_{percent}_nan.csv'
+        path = f'./data/{data_name}/{int(percent * 100)}percent/{data_name}{"_sampled" if sampled else ""}_mapped_{percent}_nan.csv'
         df_with_missing = pd.read_csv(path)
-        for col in df_with_missing.columns: df_with_missing[col] = df_with_missing[col].astype(str)
+        
         df_with_missing_imputed = datawig.SimpleImputer.complete(df_with_missing)
-        df_with_missing_imputed.to_csv(path.replace(f'{data_name}_', f'imputed_ml_{data_name}_'), index=False)
+        
+        # check if the df_original is type int, if so, convert the df_with_missing_imputed to int
+        for col in df_original.columns:
+            if df_original[col].dtype == 'int64' or df_original[col].dtype == 'object':
+                df_with_missing_imputed[col] = round(df_with_missing_imputed[col]).astype(int)
+        cols_map = create_map_from_data(df_original, reverse=True)
+        for col in cols_map:
+            df_with_missing_imputed.replace({col:cols_map[col]}, inplace=True)
+
+        df_with_missing_imputed.to_csv(path.replace(f'{data_name}{"_sampled" if sampled else ""}_mapped', f'imputed_ml_{data_name}{"_sampled" if sampled else ""}'), index=False)
+        
 
 
-def predict_nan_with_ar(data_name):
+def predict_nan_with_ar(data_name, sampled = False):
     for percent in Percentages:
         print(f'******************\nImputing {data_name} with {percent} nan\n******************')
-        path = f'./data/{data_name}/{int(percent * 100)}percent/{data_name}_{percent}_nan.csv'
+        path = f'./data/{data_name}/{int(percent * 100)}percent/{data_name}{"_sampled" if sampled else ""}_{percent}_nan.csv'
         df_with_missing = pd.read_csv(path)
         df_for_apriori = df_with_missing.copy(deep=True)
 
@@ -99,9 +163,8 @@ def predict_nan_with_ar(data_name):
         df_missing_index_rows = df_with_missing.index[df_with_missing.isna().any(axis=1)]
             
         # create a dictionary with the column names and the index of the column
-        col_names = df_with_missing.columns
         col_names_dict = {}
-        for i, col in enumerate(col_names):
+        for i, col in enumerate(df_with_missing.columns):
             col_names_dict[col] = i
 
         # algortihm to fill missing values
@@ -176,9 +239,26 @@ def print_graphs_all_imputed_data():
     
         plt.show()
     
+
+def create_map_from_data(df, reverse=False):
+    # Create a dictionary for all categorical columns
+    cols = {}
+    for col_name in df.columns:
+        if(pd.api.types.is_string_dtype(df[col_name])):
+            cols[col_name] = {}
+            unique = df[col_name].unique()
+            for j, val in enumerate(unique):
+                if reverse:
+                    cols[col_name][j] = val
+                else:
+                    cols[col_name][val] = j
+    return cols  
+
+
 def print_accuracy_for_all_datasets():
     for percent in Percentages:
         df_no_nan = pd.read_csv(f'./data/loans/raw/loans_no_nan.csv')
+        # mapped_data = pd.read_csv(f'./data/loans/raw/loans_no_nan_mapped.csv')
         df_nan = pd.read_csv(f'./data/loans/{int(percent * 100)}percent/loans_{percent}_nan.csv')
         df_with_missing_ar = pd.read_csv(f'./data/loans/{int(percent * 100)}percent/imputed_ar_loans_{percent}_nan.csv')
         df_with_missing_ml = pd.read_csv(f'./data/loans/{int(percent * 100)}percent/imputed_ml_loans_{percent}_nan.csv')
