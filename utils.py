@@ -27,9 +27,9 @@ def create_no_nan_data(data_name):
     path = f'./data/{data_name}/raw/raw_{data_name}.csv'
     df = pd.read_csv(path)
 
+    df.replace(r"^ +| +$", r"", regex=True, inplace=True)
     df.replace('', np.nan, inplace=True)
     df.replace('?', np.nan, inplace=True)
-
     # drop columns with more than 50% missing values
     df = df.dropna(thresh=len(df)*0.5, axis=1)
 
@@ -63,6 +63,7 @@ def create_nan_data(data_name):
         # save sampled data
         df_with_missing_sampled.to_csv(
             path_sampled.replace('raw', str(int(percent*100))+'percent', 1).replace('_sampled_no_nan.csv', '_sampled_', 1) + str(percent) + '_nan.csv', index=False)
+
 
 def create_mapped_data(data_name):
     path = f'./data/{data_name}/raw/{data_name}_no_nan.csv'
@@ -102,7 +103,6 @@ def create_mapped_data(data_name):
 # check the percentage of correct predictions, df1 is the complete data, df2 is the data with missing values that was imputed
 def check_accuracy(df_no_nan, df_with_nan, df_predicted, with_nan=True):
     correct, total = 0, 0
-    print(f'Checking accuracy for {df_no_nan.size} values')
 
     df_only_nan = df_with_nan.isnull()
 
@@ -143,10 +143,15 @@ def predict_nan_with_ml(data_name, sampled = False):
 
 
 def predict_nan_with_ar(data_name, sampled = False):
+
     for percent in Percentages:
         print(f'******************\nImputing {data_name} with {percent} nan\n******************')
         path = f'./data/{data_name}/{int(percent * 100)}percent/{data_name}{"_sampled" if sampled else ""}_{percent}_nan.csv'
         df_with_missing = pd.read_csv(path)
+
+        num_of_missing_before = df_with_missing.isnull().sum().sum()
+        print(f'Number of missing values: {num_of_missing_before}')
+
         df_for_apriori = df_with_missing.copy(deep=True)
 
         # go through each column and replace the values with a string
@@ -156,9 +161,13 @@ def predict_nan_with_ar(data_name, sampled = False):
         dict_for_apriori = df_for_apriori.to_dict(orient='records')
         transactions = [list(item.items()) for item in dict_for_apriori]
         min_support, min_confidence = Params_for_module[f'{data_name}{percent}'][0], Params_for_module[f'{data_name}{percent}'][1]
+        print(f'min_support:{min_support}, min_confidence:{min_confidence}')
         itemsets, rules = apriori(transactions, min_support=min_support, min_confidence=min_confidence, output_transaction_ids=False)
         rules = [rule for rule in rules if not any(map(lambda x: x[1] == 'nan', rule.rhs)) and not any(map(lambda x: x[1] == 'nan', rule.lhs))]
+        print(f'We have {len(rules)} rules and here are the first 10:')
         sorted_rules = sorted(rules, key=lambda x: x.lift, reverse=True)
+        for rule in sorted_rules[:10]:
+            print(f'Rule: {rule.lhs} -> {rule.rhs}, Lift: {rule.lift}')
         df_missing_index_rows = df_with_missing.index[df_with_missing.isna().any(axis=1)]
             
         # create a dictionary with the column names and the index of the column
@@ -190,53 +199,61 @@ def predict_nan_with_ar(data_name, sampled = False):
                             break
                     if should_fill:
                         for keyval in rule.rhs:
-                            df_with_missing.iloc[index, col_names_dict[keyval[0]]] = keyval[1]
+                            df_with_missing.iloc[index, col_names_dict[keyval[0]]] = pd.to_numeric(keyval[1], errors='ignore')
+        
+        num_of_missing_after = df_with_missing.isnull().sum().sum()
+        print(f'Number of filled values: {num_of_missing_before - num_of_missing_after}')
+        print(f'Number of left missing values: {num_of_missing_after}')
+
         df_with_missing.to_csv(path.replace(f'{data_name}_', f'imputed_ar_{data_name}_'), index=False)
 
-def print_graphs_all_imputed_data():
+def print_graph_imputed_data(data_name, sampled = False):
 
-    labels = ['Adults Income', 'Loans', 'Heart', 'Stroke']
+    # labels = ['Adults Income', 'Loans', 'Heart', 'Stroke']
+    labels = Percentages
     location = np.arange(len(labels))  # the label locations
-    width = 0.20 
+    width = 0.20
+
+    plt.rcParams["figure.figsize"] = (20, 10) 
+
+    ML_accuracy_with_nan, ML_accuracy_no_nan = [], []
+    AR_accuracy_with_nan, AR_accuracy_no_nan = [], []
+
+    df_raw = pd.read_csv(f'./data/{data_name}/raw/{data_name}{"_sampled" if sampled else ""}_no_nan.csv')
 
     for percent in Percentages:
-        
-        ML_accuracy_with_nan, ML_accuracy_no_nan = [], []
-        AR_accuracy_with_nan, AR_accuracy_no_nan = [], []
+        df_nan = pd.read_csv(f'./data/{data_name}/{int(percent * 100)}percent/{data_name}{"_sampled" if sampled else ""}_{percent}_nan.csv')
+        df_ar = pd.read_csv(f'./data/{data_name}/{int(percent * 100)}percent/imputed_ar_{data_name}{"_sampled" if sampled else ""}_{percent}_nan.csv')
+        df_ml = pd.read_csv(f'./data/{data_name}/{int(percent * 100)}percent/imputed_ml_{data_name}{"_sampled" if sampled else ""}_{percent}_nan.csv')
 
-        for data_name in Data_Names:
+        ML_accuracy_with_nan.append(check_accuracy(df_raw ,df_nan, df_ml, True)['accuracy'])
+        ML_accuracy_no_nan.append(check_accuracy(df_raw ,df_nan, df_ml, False)['accuracy'])
+        AR_accuracy_with_nan.append(check_accuracy(df_raw, df_nan, df_ar, True)['accuracy'])
+        AR_accuracy_no_nan.append(check_accuracy(df_raw, df_nan, df_ar, False)['accuracy'])
+
+    fig, ax = plt.subplots()
+
+    rects1 = ax.bar(location - 1.5 * width, ML_accuracy_with_nan, width, label='Machine Learning with NaN')
+    rects2 = ax.bar(location - width/2, AR_accuracy_with_nan, width, label='Association Rules with NaN')
+    rects3 = ax.bar(location + width/2, ML_accuracy_no_nan, width, label='Machine Learning without NaN')
+    rects4 = ax.bar(location + 1.5 * width, AR_accuracy_no_nan, width, label='Association Rules without NaN')    
             
-            df = pd.read_csv(f'./data/{data_name}/raw/{data_name}_no_nan.csv')
-            real_percent = pd.read_csv(f'./data/{data_name}/{int(percent * 100)}percent/{data_name}_{percent}_nan.csv').isnull().sum().sum() / (df.size)
-            df_raw = pd.read_csv(f'./data/{data_name}/raw/raw_{data_name}_no_nan.csv')
-            df_ar = pd.read_csv(f'./data/{data_name}/{int(percent * 100)}percent/imputed_ar_{data_name}_{percent}_nan.csv')
-            df_ml = pd.read_csv(f'./data/{data_name}/{int(percent * 100)}percent/imputed_ml_{data_name}_{percent}_nan.csv')
+    # Add some text for labels, title and custom x-axis tick labels, etc.
+    ax.set_ylabel('Accuracy')
+    ax.set_title('Accuracy of different methods')
+    ax.set_xticks(location, labels)
+    ax.legend()
 
-            ML_accuracy_with_nan.append(round(check_accuracy(df_raw, df_ml ,real_percent, True), 1))
-            ML_accuracy_no_nan.append(round(check_accuracy(df_raw, df_ml ,real_percent, False), 1))
-            AR_accuracy_with_nan.append(round(check_accuracy(df_raw, df_ar ,real_percent, True), 1))
-            AR_accuracy_no_nan.append(round(check_accuracy(df_raw, df_ar ,real_percent, False), 1))
+    ax.bar_label(rects1, padding=3)
+    ax.bar_label(rects2, padding=3)
+    ax.bar_label(rects3, padding=3)
+    ax.bar_label(rects4, padding=3)
 
-        fig, ax = plt.subplots()
-        rects1 = ax.bar(location - 1.5 * width, ML_accuracy_with_nan, width, label='Machine Learning with NaN')
-        rects2 = ax.bar(location - width/2, AR_accuracy_with_nan, width, label='Association Rules with NaN')
-        rects3 = ax.bar(location + width/2, ML_accuracy_no_nan, width, label='Machine Learning without NaN')
-        rects4 = ax.bar(location + 1.5 * width, AR_accuracy_no_nan, width, label='Association Rules without NaN')    
-            
-        # Add some text for labels, title and custom x-axis tick labels, etc.
-        ax.set_ylabel('Accuracy')
-        ax.set_title('Accuracy of different methods')
-        ax.set_xticks(location, labels)
-        ax.legend()
+    fig.tight_layout()
 
-        ax.bar_label(rects1, padding=3)
-        ax.bar_label(rects2, padding=3)
-        ax.bar_label(rects3, padding=3)
-        ax.bar_label(rects4, padding=3)
+    # fig.set_size_inches(12, 6)
 
-        fig.tight_layout()
-    
-        plt.show()
+    plt.show()
     
 
 def create_map_from_data(df, reverse=False):

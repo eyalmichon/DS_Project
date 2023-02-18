@@ -2,7 +2,7 @@ import sys
 import utils
 
 sampled = True
-sys.stdout = open('ml_result.txt', 'w')
+sys.stdout = open('ml_result_sampled.txt', 'w')
 for data_name in utils.Data_Names:
     utils.predict_nan_with_ml(data_name, sampled)
     for percent in utils.Percentages:
