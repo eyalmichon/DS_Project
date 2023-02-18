@@ -4,7 +4,6 @@ import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import datawig
-import shutil
 
 Data_Names = ['adultsIncome', 'loans', 'heart', 'stroke']
 Percentages = [0.1, 0.3, 0.5]
