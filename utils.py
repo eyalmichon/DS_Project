@@ -12,15 +12,18 @@ Params_for_module = {}
 Params_for_module[f'adultsIncome{0.1}'] = 0.3, 0.6
 Params_for_module[f'adultsIncome{0.3}'] = 0.25, 0.5
 Params_for_module[f'adultsIncome{0.5}'] = 0.2, 0.4
-Params_for_module[f'loans{0.1}'] = 0.2, 0.5
-Params_for_module[f'loans{0.3}'] = 0.15, 0.45
-Params_for_module[f'loans{0.5}'] = 0.1, 0.4
+
 Params_for_module[f'heart{0.1}'] = 0.3, 0.5
-Params_for_module[f'heart{0.3}'] = 0.25, 0.45
-Params_for_module[f'heart{0.5}'] = 0.2, 0.4
+Params_for_module[f'heart{0.3}'] = 0.15, 0.35
+Params_for_module[f'heart{0.5}'] = 0.1, 0.3
+
+Params_for_module[f'loans{0.1}'] = 0.2, 0.5
+Params_for_module[f'loans{0.3}'] = 0.1, 0.4
+Params_for_module[f'loans{0.5}'] = 0.05, 0.3
+
 Params_for_module[f'stroke{0.1}'] = 0.3, 0.5
-Params_for_module[f'stroke{0.3}'] = 0.25, 0.45
-Params_for_module[f'stroke{0.5}'] = 0.2, 0.4
+Params_for_module[f'stroke{0.3}'] = 0.15, 0.4
+Params_for_module[f'stroke{0.5}'] = 0.1, 0.3
 
 
 def create_no_nan_data(data_name):
@@ -117,7 +120,29 @@ def check_accuracy(df_no_nan, df_with_nan, df_predicted, with_nan=True):
 
     accuracy = 0 if total == 0 else correct/total
     # return the percentage of correct predictions
-    return {'correct': correct, 'total': total, 'accuracy': np.round(np.abs(accuracy * 100), 5)}
+    return {'correct': correct, 'total': total, 'accuracy': np.round(np.abs(accuracy * 100), 2)}
+
+def base_line_mode(data_name, sampled = False):
+    for percent in Percentages:
+        path = f'./data/{data_name}/{int(percent * 100)}percent/{data_name}{"_sampled" if sampled else ""}_{percent}_nan.csv'
+        df_with_missing = pd.read_csv(path)
+        for col_name in df_with_missing.columns:
+            df_with_missing[col_name].fillna(df_with_missing[col_name].mode()[0], inplace=True)
+        df_with_missing.to_csv(path.replace(f'{data_name}_', f'imputed_blmode_{data_name}_'), index=False)
+
+def base_line_mean(data_name, sampled = False):
+    df_original = pd.read_csv(f'./data/{data_name}/raw/{data_name}{"_sampled" if sampled else ""}_no_nan.csv')
+    for percent in Percentages:
+        path = f'./data/{data_name}/{int(percent * 100)}percent/{data_name}{"_sampled" if sampled else ""}_mapped_{percent}_nan.csv'
+        df_with_missing = pd.read_csv(path)
+        for col_name in df_with_missing.columns:
+            df_with_missing[col_name].fillna(df_with_missing[col_name].mean(), inplace=True)
+            if df_original[col_name].dtype == 'int64' or df_original[col_name].dtype == 'object':
+                df_with_missing[col_name] = round(df_with_missing[col_name]).astype(int)
+        cols_map = create_map_from_data(df_original, reverse=True)
+        for col in cols_map:
+            df_with_missing.replace({col:cols_map[col]}, inplace=True)
+        df_with_missing.to_csv(path.replace(f'{data_name}{"_sampled" if sampled else ""}_mapped', f'imputed_blmean_{data_name}{"_sampled" if sampled else ""}'), index=False) 
 
 
 def predict_nan_with_ml(data_name, sampled = False):
@@ -149,9 +174,6 @@ def predict_nan_with_ar(data_name, sampled = False):
         path = f'./data/{data_name}/{int(percent * 100)}percent/{data_name}{"_sampled" if sampled else ""}_{percent}_nan.csv'
         df_with_missing = pd.read_csv(path)
 
-        num_of_missing_before = df_with_missing.isnull().sum().sum()
-        print(f'Number of missing values: {num_of_missing_before}')
-
         df_for_apriori = df_with_missing.copy(deep=True)
 
         # go through each column and replace the values with a string
@@ -161,13 +183,9 @@ def predict_nan_with_ar(data_name, sampled = False):
         dict_for_apriori = df_for_apriori.to_dict(orient='records')
         transactions = [list(item.items()) for item in dict_for_apriori]
         min_support, min_confidence = Params_for_module[f'{data_name}{percent}'][0], Params_for_module[f'{data_name}{percent}'][1]
-        print(f'min_support:{min_support}, min_confidence:{min_confidence}')
         itemsets, rules = apriori(transactions, min_support=min_support, min_confidence=min_confidence, output_transaction_ids=False)
         rules = [rule for rule in rules if not any(map(lambda x: x[1] == 'nan', rule.rhs)) and not any(map(lambda x: x[1] == 'nan', rule.lhs))]
-        print(f'We have {len(rules)} rules and here are the first 10:')
         sorted_rules = sorted(rules, key=lambda x: x.lift, reverse=True)
-        for rule in sorted_rules[:10]:
-            print(f'Rule: {rule.lhs} -> {rule.rhs}, Lift: {rule.lift}')
         df_missing_index_rows = df_with_missing.index[df_with_missing.isna().any(axis=1)]
             
         # create a dictionary with the column names and the index of the column
@@ -200,47 +218,51 @@ def predict_nan_with_ar(data_name, sampled = False):
                     if should_fill:
                         for keyval in rule.rhs:
                             df_with_missing.iloc[index, col_names_dict[keyval[0]]] = pd.to_numeric(keyval[1], errors='ignore')
-        
-        num_of_missing_after = df_with_missing.isnull().sum().sum()
-        print(f'Number of filled values: {num_of_missing_before - num_of_missing_after}')
-        print(f'Number of left missing values: {num_of_missing_after}')
 
         df_with_missing.to_csv(path.replace(f'{data_name}_', f'imputed_ar_{data_name}_'), index=False)
 
 def print_graph_imputed_data(data_name, sampled = False):
 
-    # labels = ['Adults Income', 'Loans', 'Heart', 'Stroke']
+    Data = ['Adults Income', 'Loans', 'Heart', 'Stroke']
     labels = Percentages
     location = np.arange(len(labels))  # the label locations
-    width = 0.20
+    width = 0.1
 
-    plt.rcParams["figure.figsize"] = (20, 10) 
+    plt.rcParams["figure.figsize"] = (15, 10) 
 
-    ML_accuracy_with_nan, ML_accuracy_no_nan = [], []
+    ML_accuracy_with_nan = []
     AR_accuracy_with_nan, AR_accuracy_no_nan = [], []
+    MEAN_accuracy_with_nan = []
+    MODE_accuracy_with_nan =[]
 
     df_raw = pd.read_csv(f'./data/{data_name}/raw/{data_name}{"_sampled" if sampled else ""}_no_nan.csv')
 
     for percent in Percentages:
         df_nan = pd.read_csv(f'./data/{data_name}/{int(percent * 100)}percent/{data_name}{"_sampled" if sampled else ""}_{percent}_nan.csv')
         df_ar = pd.read_csv(f'./data/{data_name}/{int(percent * 100)}percent/imputed_ar_{data_name}{"_sampled" if sampled else ""}_{percent}_nan.csv')
-        df_ml = pd.read_csv(f'./data/{data_name}/{int(percent * 100)}percent/imputed_ml_{data_name}{"_sampled" if sampled else ""}_{percent}_nan.csv')
+        df_ml = pd.read_csv(f'./data/{data_name}/{int(percent * 100)}percent/imputed_ml_{data_name}{"_sampled" if sampled else ""}_{percent}_nan.csv')  
+        df_mean = pd.read_csv(f'./data/{data_name}/{int(percent * 100)}percent/imputed_blmean_{data_name}{"_sampled" if sampled else ""}_{percent}_nan.csv')
+        df_mode = pd.read_csv(f'./data/{data_name}/{int(percent * 100)}percent/imputed_blmode_{data_name}{"_sampled" if sampled else ""}_{percent}_nan.csv')     
 
         ML_accuracy_with_nan.append(check_accuracy(df_raw ,df_nan, df_ml, True)['accuracy'])
-        ML_accuracy_no_nan.append(check_accuracy(df_raw ,df_nan, df_ml, False)['accuracy'])
         AR_accuracy_with_nan.append(check_accuracy(df_raw, df_nan, df_ar, True)['accuracy'])
         AR_accuracy_no_nan.append(check_accuracy(df_raw, df_nan, df_ar, False)['accuracy'])
+        MEAN_accuracy_with_nan.append(check_accuracy(df_raw, df_nan, df_mean, True)['accuracy'])
+        MODE_accuracy_with_nan.append(check_accuracy(df_raw, df_nan, df_mode, True)['accuracy'])
 
+    
     fig, ax = plt.subplots()
 
-    rects1 = ax.bar(location - 1.5 * width, ML_accuracy_with_nan, width, label='Machine Learning with NaN')
-    rects2 = ax.bar(location - width/2, AR_accuracy_with_nan, width, label='Association Rules with NaN')
-    rects3 = ax.bar(location + width/2, ML_accuracy_no_nan, width, label='Machine Learning without NaN')
-    rects4 = ax.bar(location + 1.5 * width, AR_accuracy_no_nan, width, label='Association Rules without NaN')    
+    rects1 = ax.bar(location - 2 * width, ML_accuracy_with_nan, width, label='Machine Learning')
+    rects2 = ax.bar(location - 1 * width, AR_accuracy_with_nan, width, label='Association Rules with NaN')
+    rects3 = ax.bar(location + 0 * width, AR_accuracy_no_nan, width, label='Association Rules without NaN')
+    rects4 = ax.bar(location + 1 * width, MEAN_accuracy_with_nan, width, label='Mean')
+    rects5 = ax.bar(location + 2 * width, MODE_accuracy_with_nan, width, label='Mode')   
             
     # Add some text for labels, title and custom x-axis tick labels, etc.
     ax.set_ylabel('Accuracy')
-    ax.set_title('Accuracy of different methods')
+    ax.set_xlabel('Persentage of missing values')
+    ax.set_title(f'Accuracy of different methods on {Data[Data_Names.index(data_name)]}')
     ax.set_xticks(location, labels)
     ax.legend()
 
@@ -248,12 +270,11 @@ def print_graph_imputed_data(data_name, sampled = False):
     ax.bar_label(rects2, padding=3)
     ax.bar_label(rects3, padding=3)
     ax.bar_label(rects4, padding=3)
+    ax.bar_label(rects5, padding=3)
 
     fig.tight_layout()
 
-    # fig.set_size_inches(12, 6)
-
-    plt.show()
+    plt.savefig(f'./graphs/{data_name}_graph.png')
     
 
 def create_map_from_data(df, reverse=False):
