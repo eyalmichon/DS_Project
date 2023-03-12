@@ -1,7 +1,2 @@
 datawig==0.2.0
-efficient-apriori==2.0.2
-matplotlib==3.6.3
-matplotlib-inline==0.1.6
-numpy==1.23.1
-pandas==1.5.3
 tqdm==4.64.1
